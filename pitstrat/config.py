@@ -24,8 +24,14 @@ MIN_DRY_SHARE = 0.9
 # Laps slower than this multiple of the driver's median lap are treated as outliers.
 OUTLIER_LIMIT = 1.07
 
-# Longest stint allowed per compound in the simulator. Tree models cannot
-# extrapolate past the tyre ages they saw, so stints are capped.
+# Longest stint allowed per compound in the simulator. Each circuit uses this
+# share of the stints teams really ran there: teams pit before a tyre falls
+# off a cliff, so race laps never show the cliff, but stint lengths do.
+STINT_QUANTILE = 0.9
+# Fewer real stints than this on a compound at a circuit falls back to MAX_STINT.
+MIN_STINTS = 10
+# The fallback and upper bound. Tree models cannot extrapolate past the tyre
+# ages they saw, so stints are capped.
 MAX_STINT = {"SOFT": 25, "MEDIUM": 35, "HARD": 45}
 MIN_STINT = 5
 

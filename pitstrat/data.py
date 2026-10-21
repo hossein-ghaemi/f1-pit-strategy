@@ -76,6 +76,13 @@ def race_laps(session):
     pits["pit_in"] = True
     laps = laps.merge(pits.drop_duplicates(), on=["driver_number", "lap_number"], how="left")
 
+    # OpenF1 has no pit feed for some races; there a new tyre stint marks a stop.
+    # Only then, because stints sometimes split without a stop near the flag.
+    last_stint = laps.groupby("driver_number")["stint_number"].transform("max")
+    no_pit_feed = pits.empty
+    laps["stint_in"] = no_pit_feed & (laps["lap_number"] == laps["lap_end"]) & (laps["stint_number"] < last_stint)
+    laps["stint_out"] = no_pit_feed & (laps["lap_number"] == laps["lap_start"]) & (laps["stint_number"] > 1)
+
     # Attach the latest weather reading taken before each lap started.
     weather = pd.DataFrame(feeds["weather"])
     weather["date"] = pd.to_datetime(weather["date"], format="ISO8601")
@@ -96,8 +103,8 @@ def race_laps(session):
         # The first lap on a tyre counts as tyre life 1.
         "TyreLife": laps["tyre_age_at_start"].fillna(0) + laps["lap_number"] - laps["lap_start"] + 1,
         "Stint": laps["stint_number"],
-        "PitIn": laps["pit_in"].notna(),
-        "PitOut": laps["is_pit_out_lap"].fillna(False).astype(bool),
+        "PitIn": laps["pit_in"].notna() | laps["stint_in"],
+        "PitOut": laps["is_pit_out_lap"].fillna(False).astype(bool) | laps["stint_out"],
         "AirTemp": laps["air_temperature"],
         "TrackTemp": laps["track_temperature"],
         "Rainfall": laps["rainfall"].fillna(0).astype(bool),
@@ -126,16 +133,20 @@ def load_dataset():
     return pd.read_csv(config.LAPS_FILE)
 
 
+def dry_races(laps):
+    """Drop mixed-weather races, keeping races mostly run on dry tyres in the dry."""
+    dry = laps["Compound"].isin(config.DRY_COMPOUNDS) & ~laps["Rainfall"]
+    share = dry.groupby([laps["Year"], laps["Circuit"]]).transform("mean")
+    return laps[share >= config.MIN_DRY_SHARE]
+
+
 def clean_laps(laps):
     """Keep only representative laps on dry tyres from dry races.
 
     Safety car, VSC and traffic-heavy laps are much slower than normal, so
     the outlier limit removes them along with the opening lap and pit laps.
     """
-    race = ["Year", "Circuit"]
-    dry = laps["Compound"].isin(config.DRY_COMPOUNDS) & ~laps["Rainfall"]
-    laps = laps[dry.groupby([laps[c] for c in race]).transform("mean") >= config.MIN_DRY_SHARE]
-
+    laps = dry_races(laps)
     laps = laps[
         (laps["LapNumber"] > 1)
         & ~laps["PitIn"]
@@ -145,7 +156,7 @@ def clean_laps(laps):
         & laps["LapTime"].notna()
     ].copy()
 
-    race_driver = race + ["Driver"]
+    race_driver = ["Year", "Circuit", "Driver"]
     median = laps.groupby(race_driver)["LapTime"].transform("median")
     laps = laps[laps["LapTime"] <= median * config.OUTLIER_LIMIT].copy()
 
@@ -183,6 +194,6 @@ def race_results(raw_laps, year, circuit):
         "Driver": results["name_acronym"],
         "Team": results["team_name"],
         "RaceTime": results["duration"],
-        "Laps": results["number_of_laps"],
+        "Laps": results["number_of_laps"].astype("Int64"),
     })
     return table.merge(strategies_used(race), left_on="Driver", right_index=True, how="left")

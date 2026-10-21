@@ -2,14 +2,16 @@
 
 Predicts Formula 1 lap times with a tree model and simulates pit-stop strategies to find the one with the lowest predicted race time.
 
+For a diagram of the pipeline and a guide to reading the code, see [docs/how-it-works.md](docs/how-it-works.md).
+
 ## How it works
 
-1. **Data.** Laps, tyre stints, pit stops and weather for every 2023–2025 race come from [OpenF1](https://openf1.org). F1's live-timing archive, which FastF1 uses, rejects requests. Raw responses are cached under `data/openf1/`.
+1. **Data.** Laps, tyre stints, pit stops and weather for every 2023–2025 race come from [OpenF1](https://openf1.org). F1's live-timing archive, which FastF1 uses, rejects requests. Raw responses are cached under `data/openf1/`. Some 2023 races have no pit-stop records in OpenF1; for those, a change of tyre stint marks the stop.
 2. **Cleaning.** Mixed-weather races, where under 90% of laps ran on dry tyres in the dry, are dropped. From the rest, these laps are dropped: the opening lap, in-laps and out-laps, wet laps, non-dry compounds, and any lap more than 7% slower than the driver's median for that race. The last rule removes safety car, VSC and heavy-traffic laps.
 3. **Target.** Each lap is turned into a delta from the driver's median lap in that race. Car and driver pace cancel out, and the model learns how tyre wear and fuel burn change lap time.
-4. **Model.** Random Forest and XGBoost are trained on these features: tyre age, compound, lap number, race progress (fuel load), and circuit. Both are scored with 5-fold cross-validation by race, so each test fold holds whole races the model never saw. The one with the lower error is refit on all laps and saved. Air and track temperature were dropped: they mostly identify single races, and including them made held-out error worse.
+4. **Model.** Random Forest and XGBoost are trained on these features: tyre age, compound, lap number, race progress (fuel load), and circuit. Both are scored with 5-fold cross-validation by race, so each test fold holds whole races the model never saw. Both are told that tyre age can only make laps slower, never faster. The one with the lower error is refit on all laps and saved. Air and track temperature were dropped: they mostly identify single races, and including them made held-out error worse.
 5. **Pit loss.** Each green-flag stop costs its in-lap plus out-lap, minus two normal laps. A circuit's pit loss is the median over its stops.
-6. **Simulation.** The circuit's latest dry race supplies the race length, typical lap and pit loss. Every legal one- and two-stop strategy is built: at least two dry compounds, with stint lengths between `MIN_STINT` and each compound's `MAX_STINT`. Each lap is predicted as the circuit's typical lap plus the model's delta, pit losses are added, and the strategies are ranked by total time.
+6. **Simulation.** The circuit's latest dry race supplies the race length, typical lap and pit loss. Every legal strategy up to `--max-stops` is built: at least two dry compounds, with stint lengths between `MIN_STINT` and the circuit's stint limit for each compound. The stint limit is the 90th percentile of the stints teams really ran on that compound at that circuit, capped at `MAX_STINT`; with fewer than 10 real stints it falls back to `MAX_STINT`. Teams pit before a tyre's performance drops off a cliff, so race laps never show the cliff, but stint lengths do. Each lap is predicted as the circuit's typical lap plus the model's delta, pit losses are added, and the strategies are ranked by total time.
 
 ## Repository
 
@@ -58,7 +60,7 @@ python -m pitstrat.cli train   # compare both models, save the best to models/ (
 python -m pitstrat.cli simulate --circuit Monza
 ```
 
-This prints the circuit's race length, typical lap and pit loss, then the 10 fastest strategies. Each row shows:
+This prints the circuit's race length, typical lap, pit loss and stint limits, then the 10 fastest strategies. Each row shows:
 
 - **Strategy:** the compounds in order. `H-S` means Hard, then Soft.
 - **Stops:** how many pit stops the strategy makes.
@@ -68,7 +70,7 @@ This prints the circuit's race length, typical lap and pit loss, then the 10 fas
 
 Below that it prints the real result of the race the conditions came from, so you can compare. It shows each finisher's position, driver, team, race time, laps completed, and the compounds and pit laps they actually used. Real race times include safety cars and traffic, which the prediction leaves out.
 
-It also writes the full ranking to `outputs/<circuit>-strategies.csv`. A chart of one-stop race time by pit lap goes to `outputs/<circuit>-one-stop.png`.
+It also writes the full ranking to `outputs/<circuit>-strategies.csv`. A chart of one-stop race time by pit lap goes to `outputs/<circuit>-one-stop.png`, unless no one-stop strategy fits the circuit's stint limits.
 
 The `simulate` command also takes these options:
 
@@ -109,4 +111,6 @@ python -m pytest -q
 
 - The model predicts a typical car on a clear track. It ignores traffic, undercut and overcut effects, and safety cars.
 - Every stint starts on new tyres, and the opening lap is predicted like any other lap. That makes the total race time a little optimistic, but it shifts every strategy by the same amount.
-- Tree models cannot extrapolate past the tyre ages they were trained on, so `MAX_STINT` caps stint length.
+- Tree models cannot extrapolate past the tyre ages they were trained on, so stint lengths are capped by what teams ran at each circuit.
+- In race data, compounds differ little in pace: the same driver is on average only about 0.3 s a lap faster on Soft than on Hard. The model therefore tends to finish on Soft, where teams more often finish on Hard.
+- Special rules are not modelled, such as Monaco 2025's two mandatory stops or Qatar 2025's 25-lap tyre limit.

@@ -11,8 +11,13 @@ SURFACE, TEXT, MUTED, GRID = "#fcfcfb", "#1f1f1e", "#6b6a64", "#e4e3de"
 
 
 def plot_one_stop(result, race, path):
-    """Line per compound pair: gap to the fastest strategy for each pit lap."""
+    """Line per compound pair: gap to the fastest strategy for each pit lap.
+
+    Returns False without drawing when no one-stop strategy fits the stint limits.
+    """
     one_stop = result[result["Stops"] == 1].copy()
+    if one_stop.empty:
+        return False
     one_stop["PitLap"] = one_stop["PitLaps"].astype(int)
     fastest = result["RaceTime"].iloc[0]
 
@@ -45,3 +50,4 @@ def plot_one_stop(result, race, path):
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=150, facecolor=SURFACE)
     plt.close(fig)
+    return True

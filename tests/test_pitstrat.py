@@ -3,11 +3,11 @@
 import pandas as pd
 import pytest
 
-from pitstrat import config
+from pitstrat import config, data
 from pitstrat.data import clean_laps, strategies_used
 from pitstrat.features import make_features
 from pitstrat.pit_loss import stop_losses
-from pitstrat.simulate import Race, simulate, strategies
+from pitstrat.simulate import Race, simulate, stint_limits, strategies
 
 
 def lap(number, time, **extra):
@@ -112,3 +112,40 @@ def test_strategies_used_reads_compounds_and_pit_laps_from_stints():
     used = strategies_used(laps).loc["AAA"]
     assert used["Strategy"] == "S-H-M"
     assert used["PitLaps"] == "15, 40"
+
+
+def test_stint_limits_come_from_real_stints():
+    rows = []
+    for number, driver in enumerate("ABCDEFGHIJ"):
+        hard = 30 + number  # hard stints of 30-39 laps
+        rows += [lap(n, 90.0, Driver=driver, Stint=1, Compound="MEDIUM", TotalLaps=hard + 15)
+                 for n in range(1, 16)]
+        rows += [lap(n, 90.0, Driver=driver, Stint=2, Compound="HARD", TotalLaps=hard + 15)
+                 for n in range(16, hard + 16)]
+    limits = stint_limits(pd.DataFrame(rows), "Testville")
+    assert limits["MEDIUM"] == 15
+    assert limits["HARD"] == round(pd.Series(range(30, 40)).quantile(config.STINT_QUANTILE))
+    assert limits["SOFT"] == config.MAX_STINT["SOFT"]  # never used, so the fallback
+
+
+def fake_race_feeds(pit):
+    stints = [{"driver_number": 1, "stint_number": 1, "lap_start": 1, "lap_end": 3,
+               "compound": "MEDIUM", "tyre_age_at_start": 0},
+              {"driver_number": 1, "stint_number": 2, "lap_start": 4, "lap_end": 6,
+               "compound": "HARD", "tyre_age_at_start": 0}]
+    laps = [{"driver_number": 1, "lap_number": n, "lap_duration": 90.0, "is_pit_out_lap": n == 4,
+             "date_start": f"2024-01-01T12:0{n}:00+00:00"} for n in range(1, 7)]
+    return {"drivers": [{"driver_number": 1, "name_acronym": "AAA", "team_name": "T"}],
+            "laps": laps, "stints": stints, "pit": pit,
+            "weather": [{"date": "2024-01-01T11:59:00+00:00", "air_temperature": 25.0,
+                         "track_temperature": 40.0, "rainfall": 0}]}
+
+
+@pytest.mark.parametrize("pit", [[{"driver_number": 1, "lap_number": 3}], []])
+def test_race_laps_finds_stops_with_or_without_pit_feed(monkeypatch, pit):
+    feeds = fake_race_feeds(pit)
+    monkeypatch.setattr(data, "fetch_cached", lambda feed, key: feeds[feed])
+    laps = data.race_laps({"session_key": 1, "year": 2024, "circuit_short_name": "Testville"})
+    assert laps[laps["PitIn"]]["LapNumber"].tolist() == [3]
+    assert laps[laps["PitOut"]]["LapNumber"].tolist() == [4]
+    assert laps["TyreLife"].tolist() == [1, 2, 3, 1, 2, 3]

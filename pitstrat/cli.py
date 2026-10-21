@@ -34,6 +34,7 @@ def run_simulate(args):
 
     print(f"{race.year} {race.circuit}: {race.total_laps} laps, typical lap {race.base_lap:.3f}s, "
           f"pit loss {race.pit_loss:.1f}s")
+    print("max stint: " + ", ".join(f"{compound.title()} {laps}" for compound, laps in race.max_stint.items()))
     print(f"{len(result)} strategies simulated\n")
     top = result.head(args.top).assign(
         RaceTime=lambda frame: frame["RaceTime"].map(format_time),
@@ -51,9 +52,13 @@ def run_simulate(args):
     csv_path = config.OUTPUTS_DIR / f"{slug}-strategies.csv"
     config.OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
     result.to_csv(csv_path, index=False)
+    print(f"\nsaved {csv_path}")
     plot_path = config.OUTPUTS_DIR / f"{slug}-one-stop.png"
-    plot_one_stop(result, race, plot_path)
-    print(f"\nsaved {csv_path}\nsaved {plot_path}")
+    plot_path.unlink(missing_ok=True)  # never leave a chart from an earlier run
+    if plot_one_stop(result, race, plot_path):
+        print(f"saved {plot_path}")
+    else:
+        print("no one-stop strategy fits the stint limits, so no chart was drawn")
 
 
 def main():
