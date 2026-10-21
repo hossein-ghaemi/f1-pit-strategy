@@ -1,0 +1,14 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Downloaded data, trained models and generated outputs
+data/
+models/
+outputs/
+
+# Editors and local tools
+.idea/
+.vscode/

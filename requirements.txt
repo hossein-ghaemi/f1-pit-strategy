@@ -1,0 +1,7 @@
+# Direct runtime dependencies. Install into a clean Python 3.12 environment.
+requests==2.34.2
+numpy==1.26.4
+pandas==2.3.3
+scikit-learn==1.9.1
+xgboost==3.4.1
+matplotlib==3.10.9
