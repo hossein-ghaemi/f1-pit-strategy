@@ -15,6 +15,7 @@ from pitstrat.train import predict
 @dataclass
 class Race:
     circuit: str
+    year: int
     total_laps: int
     base_lap: float  # a typical green-flag lap of the field, in seconds
     pit_loss: float
@@ -34,6 +35,7 @@ def race_conditions(raw_laps, circuit, year=None):
     race = at_circuit[at_circuit["Year"] == year]
     return Race(
         circuit=circuit,
+        year=int(year),
         total_laps=int(race["TotalLaps"].max()),
         base_lap=float(clean.groupby("Driver")["DriverMedian"].first().median()),
         pit_loss=pit_loss(raw_laps, circuit),

@@ -8,7 +8,7 @@
 import argparse
 
 from pitstrat import config
-from pitstrat.data import build_dataset, load_dataset
+from pitstrat.data import build_dataset, load_dataset, race_results
 from pitstrat.plot import plot_one_stop
 from pitstrat.simulate import format_time, race_conditions, simulate
 from pitstrat.train import load_model, train
@@ -32,13 +32,20 @@ def run_simulate(args):
     race = race_conditions(laps, args.circuit, args.year)
     result = simulate(load_model(), race, args.max_stops)
 
-    print(f"{race.circuit}: {race.total_laps} laps, typical lap {race.base_lap:.3f}s, "
+    print(f"{race.year} {race.circuit}: {race.total_laps} laps, typical lap {race.base_lap:.3f}s, "
           f"pit loss {race.pit_loss:.1f}s")
     print(f"{len(result)} strategies simulated\n")
     top = result.head(args.top).assign(
         RaceTime=lambda frame: frame["RaceTime"].map(format_time),
         Gap=lambda frame: frame["Gap"].map(lambda gap: f"+{gap:.3f}s"))
     print(top.to_string(index=False))
+
+    # The real race the conditions came from, to compare against the prediction.
+    actual = race_results(laps, race.year, race.circuit).head(args.results)
+    actual["RaceTime"] = actual["RaceTime"].map(
+        lambda seconds: format_time(seconds) if seconds == seconds else "")  # lapped cars have no time
+    print(f"\nActual {race.year} {race.circuit} result:")
+    print(actual.fillna("").to_string(index=False))
 
     slug = race.circuit.lower().replace(" ", "-")
     csv_path = config.OUTPUTS_DIR / f"{slug}-strategies.csv"
@@ -64,6 +71,7 @@ def main():
     sim.add_argument("--year", type=int, help="race whose conditions to use (default: latest)")
     sim.add_argument("--max-stops", type=int, default=2)
     sim.add_argument("--top", type=int, default=10)
+    sim.add_argument("--results", type=int, default=5, help="finishers of the real race to show")
     sim.set_defaults(run=run_simulate)
 
     args = parser.parse_args()

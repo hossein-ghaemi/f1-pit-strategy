@@ -154,3 +154,35 @@ def clean_laps(laps):
     laps["DriverMedian"] = laps.groupby(race_driver)["LapTime"].transform("median")
     laps["LapDelta"] = laps["LapTime"] - laps["DriverMedian"]
     return laps.reset_index(drop=True)
+
+
+def strategies_used(laps):
+    """Each driver's compounds and pit laps, read from their tyre stints."""
+    stints = (laps.sort_values("LapNumber")
+              .groupby(["Driver", "Stint"])
+              .agg(Compound=("Compound", "first"), Start=("LapNumber", "min"))
+              .reset_index())
+    return stints.groupby("Driver").agg(
+        Strategy=("Compound", lambda c: "-".join(str(x)[0] for x in c)),
+        PitLaps=("Start", lambda s: ", ".join(str(int(lap) - 1) for lap in s.iloc[1:])),
+    )
+
+
+def race_results(raw_laps, year, circuit):
+    """The official classification of one race with each driver's tyre strategy."""
+    session = next(s for s in race_sessions(year) if s["circuit_short_name"] == circuit)
+    results = pd.DataFrame(fetch_cached("session_result", session["session_key"]))
+    drivers = pd.DataFrame(fetch_cached("drivers", session["session_key"]))
+    results = results.merge(drivers[["driver_number", "name_acronym", "team_name"]]
+                            .drop_duplicates("driver_number"), on="driver_number")
+    results = results.dropna(subset=["position"]).sort_values("position")
+
+    race = raw_laps[(raw_laps["Year"] == year) & (raw_laps["Circuit"] == circuit)]
+    table = pd.DataFrame({
+        "Pos": results["position"].astype(int),
+        "Driver": results["name_acronym"],
+        "Team": results["team_name"],
+        "RaceTime": results["duration"],
+        "Laps": results["number_of_laps"],
+    })
+    return table.merge(strategies_used(race), left_on="Driver", right_index=True, how="left")

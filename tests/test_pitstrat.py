@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from pitstrat import config
-from pitstrat.data import clean_laps
+from pitstrat.data import clean_laps, strategies_used
 from pitstrat.features import make_features
 from pitstrat.pit_loss import stop_losses
 from pitstrat.simulate import Race, simulate, strategies
@@ -89,7 +89,7 @@ class TyreWear:
 def test_simulate_ranks_strategies_by_total_time():
     bundle = {"model": TyreWear(),
               "columns": ["TyreLife", "Compound_SOFT", "Compound_MEDIUM", "Compound_HARD"]}
-    race = Race("Testville", total_laps=40, base_lap=90.0, pit_loss=20.0)
+    race = Race("Testville", 2024, total_laps=40, base_lap=90.0, pit_loss=20.0)
     result = simulate(bundle, race, max_stops=2)
 
     assert result["RaceTime"].is_monotonic_increasing
@@ -102,3 +102,13 @@ def test_simulate_ranks_strategies_by_total_time():
     hard = sum(90.0 + 0.02 * life for life in range(1, 26))
     row = result[(result["Strategy"] == "S-H") & (result["PitLaps"] == "15")]
     assert row["RaceTime"].iloc[0] == pytest.approx(soft + hard + 20.0)
+
+
+def test_strategies_used_reads_compounds_and_pit_laps_from_stints():
+    laps = pd.DataFrame(
+        [lap(n, 90.0, Stint=1, Compound="SOFT") for n in range(1, 16)]
+        + [lap(n, 90.0, Stint=2, Compound="HARD") for n in range(16, 41)]
+        + [lap(n, 90.0, Stint=3, Compound="MEDIUM") for n in range(41, 51)])
+    used = strategies_used(laps).loc["AAA"]
+    assert used["Strategy"] == "S-H-M"
+    assert used["PitLaps"] == "15, 40"

@@ -66,6 +66,8 @@ This prints the circuit's race length, typical lap and pit loss, then the 10 fas
 - **RaceTime:** the predicted race time.
 - **Gap:** how far behind the fastest strategy it is.
 
+Below that it prints the real result of the race the conditions came from, so you can compare. It shows each finisher's position, driver, team, race time, laps completed, and the compounds and pit laps they actually used. Real race times include safety cars and traffic, which the prediction leaves out.
+
 It also writes the full ranking to `outputs/<circuit>-strategies.csv`. A chart of one-stop race time by pit lap goes to `outputs/<circuit>-one-stop.png`.
 
 The `simulate` command also takes these options:
@@ -73,11 +75,13 @@ The `simulate` command also takes these options:
 - `--year`: use the conditions of a specific season's race. The default is the latest dry race at that circuit.
 - `--max-stops`: the most stops a strategy can have. The default is 2.
 - `--top`: how many strategies to print. The default is 10.
+- `--results`: how many finishers of the real race to show. The default is 5.
 
 ```sh
 python -m pitstrat.cli simulate --circuit Sakhir --top 20         # show 20 strategies
 python -m pitstrat.cli simulate --circuit Sakhir --year 2024      # use the 2024 race
 python -m pitstrat.cli simulate --circuit Sakhir --max-stops 1    # one-stop strategies only
+python -m pitstrat.cli simulate --circuit Sakhir --results 20      # show the whole real result
 ```
 
 Circuit names follow OpenF1, for example `Monza`, `Sakhir`, `Silverstone`, `Suzuka` and `Spa-Francorchamps`. An unknown name lists the valid ones. Quote names that contain spaces:
